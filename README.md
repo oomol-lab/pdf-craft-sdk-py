@@ -4,10 +4,10 @@ A Python SDK for interacting with the PDF Craft API. It simplifies the process o
 
 ## Installation
 
-You can install the package directly:
+You can install the package from PyPI:
 
 ```bash
-pip install .
+pip install pdf-craft-sdk
 ```
 
 ## Usage
