@@ -2,7 +2,7 @@ import time
 import requests
 from typing import Optional, Dict, Any, Union
 from .exceptions import APIError, TimeoutError
-from .enums import FormatType
+from .enums import FormatType, PollingStrategy
 
 class PDFCraftClient:
     def __init__(self, api_key: str, base_url: str = "https://fusion-api.oomol.com/v1"):
@@ -75,22 +75,40 @@ class PDFCraftClient:
         except ValueError:
              raise APIError(f"Invalid JSON response: {response.text}")
 
-    def wait_for_completion(self, task_id: str, format_type: Union[str, FormatType] = FormatType.MARKDOWN, max_wait: int = 300, check_interval: int = 5) -> str:
+    def wait_for_completion(self, 
+                            task_id: str, 
+                            format_type: Union[str, FormatType] = FormatType.MARKDOWN, 
+                            max_wait_ms: int = 7200000, 
+                            check_interval_ms: int = 1000,
+                            max_check_interval_ms: int = 5000,
+                            backoff_factor: Union[float, PollingStrategy] = PollingStrategy.EXPONENTIAL) -> str:
         """
         Poll until conversion completes
         
         Args:
             task_id: The sessionID of the task
             format_type: 'markdown' or 'epub' or FormatType
-            max_wait: Maximum wait time in seconds
-            check_interval: Interval between checks in seconds
+            max_wait_ms: Maximum wait time in milliseconds (default 2 hours)
+            check_interval_ms: Initial interval in milliseconds (default 1000)
+            max_check_interval_ms: Maximum interval in milliseconds (default 5000)
+            backoff_factor: Multiplier for increasing interval or PollingStrategy enum (default 1.5)
             
         Returns:
             download_url (str): The URL to download the result
         """
         start_time = time.time()
+        timeout_sec = max_wait_ms / 1000.0
+        
+        # Determine backoff factor value
+        if isinstance(backoff_factor, PollingStrategy):
+            factor = backoff_factor.value
+        else:
+            factor = float(backoff_factor)
 
-        while time.time() - start_time < max_wait:
+        current_interval_sec = check_interval_ms / 1000.0
+        max_interval_sec = max_check_interval_ms / 1000.0
+
+        while time.time() - start_time < timeout_sec:
             result = self.get_conversion_result(task_id, format_type)
 
             state = result.get("state")
@@ -104,11 +122,22 @@ class PDFCraftClient:
             elif state == "failed":
                 raise APIError(f"Conversion failed: {result.get('error', 'Unknown error')}")
             
-            time.sleep(check_interval)
+            time.sleep(current_interval_sec)
+            
+            # Update interval
+            current_interval_sec = min(current_interval_sec * factor, max_interval_sec)
 
         raise TimeoutError("Conversion timeout")
 
-    def convert(self, pdf_url: str, format_type: Union[str, FormatType] = FormatType.MARKDOWN, model: str = "gundam", wait: bool = True, max_wait: int = 300) -> Union[str, Dict[str, Any]]:
+    def convert(self, 
+                pdf_url: str, 
+                format_type: Union[str, FormatType] = FormatType.MARKDOWN, 
+                model: str = "gundam", 
+                wait: bool = True, 
+                max_wait_ms: int = 7200000, 
+                check_interval_ms: int = 1000,
+                max_check_interval_ms: int = 5000,
+                backoff_factor: Union[float, PollingStrategy] = PollingStrategy.EXPONENTIAL) -> Union[str, Dict[str, Any]]:
         """
         High-level method to convert PDF.
         
@@ -118,6 +147,6 @@ class PDFCraftClient:
         task_id = self.submit_conversion(pdf_url, format_type, model)
         
         if wait:
-            return self.wait_for_completion(task_id, format_type, max_wait)
+            return self.wait_for_completion(task_id, format_type, max_wait_ms, check_interval_ms, max_check_interval_ms, backoff_factor)
         else:
             return task_id

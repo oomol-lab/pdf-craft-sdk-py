@@ -23,7 +23,10 @@ def main():
         print("Starting Markdown conversion (synchronous wait)...")
         markdown_url = client.convert(
             pdf_url=PDF_URL,
-            format_type=FormatType.MARKDOWN
+            format_type=FormatType.MARKDOWN,
+            # Optional: Customize polling
+            check_interval_ms=2000,
+            backoff_factor=1.2
         )
         print(f"✅ Conversion successful! Markdown Download URL: {markdown_url}")
     except Exception as e:
@@ -45,7 +48,7 @@ def main():
         epub_url = client.wait_for_completion(
             task_id=task_id,
             format_type=FormatType.EPUB,
-            max_wait=600  # Set max wait time to 600 seconds
+            max_wait_ms=600000  # Set max wait time to 600 seconds (10 mins)
         )
         print(f"✅ Conversion successful! EPUB Download URL: {epub_url}")
 

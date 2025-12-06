@@ -57,14 +57,37 @@ except Exception as e:
 
 ### Configuration
 
-- `max_wait`: Maximum time (in seconds) to wait for the conversion. Default is 300.
-- `model`: The model to use for conversion. Default is "gundam".
+The `convert` and `wait_for_completion` methods accept optional configuration for polling behavior:
+
+- `max_wait_ms`: Maximum time (in milliseconds) to wait for the conversion. Default is 7200000 (2 hours).
+- `check_interval_ms`: Initial polling interval (in milliseconds). Default is 1000 (1 second).
+- `max_check_interval_ms`: Maximum polling interval (in milliseconds). Default is 5000 (5 seconds).
+- `backoff_factor`: Multiplier for increasing interval after each check, or `PollingStrategy` enum. Default is `PollingStrategy.EXPONENTIAL` (1.5).
+
+#### Polling Strategies
+
+You can use `PollingStrategy` enum for `backoff_factor`:
+
+- `PollingStrategy.EXPONENTIAL` (1.5): Default. Starts fast, slows down.
+- `PollingStrategy.FIXED` (1.0): Polls at a fixed interval.
+- `PollingStrategy.AGGRESSIVE` (2.0): Doubles the interval each time.
 
 ```python
-# Example with custom timeout and model
+from pdf_craft_sdk import PollingStrategy
+
+# Example: Stable Polling (Every 3 seconds)
 download_url = client.convert(
     pdf_url="...", 
-    model="gundam", 
-    max_wait=600
+    check_interval_ms=3000,
+    max_check_interval_ms=3000,
+    backoff_factor=PollingStrategy.FIXED
+)
+
+# Example: Long Running Task (Start slow, check infrequently)
+download_url = client.convert(
+    pdf_url="...", 
+    check_interval_ms=5000,
+    max_check_interval_ms=60000, # 1 minute
+    backoff_factor=2.0 # or PollingStrategy.AGGRESSIVE
 )
 ```
