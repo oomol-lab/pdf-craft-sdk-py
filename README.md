@@ -17,7 +17,7 @@ pip install pdf-craft-sdk
 The SDK provides a high-level `convert` method that handles everything for you (submission + polling).
 
 ```python
-from pdf_craft_sdk import PDFCraftClient
+from pdf_craft_sdk import PDFCraftClient, FormatType
 
 # Initialize the client
 client = PDFCraftClient(api_key="YOUR_API_KEY")
@@ -25,7 +25,7 @@ client = PDFCraftClient(api_key="YOUR_API_KEY")
 # Convert a PDF to Markdown and wait for the result
 try:
     pdf_url = "cache://your-pdf-file.pdf"
-    download_url = client.convert(pdf_url, format_type="markdown")
+    download_url = client.convert(pdf_url, format_type=FormatType.MARKDOWN)
     print(f"Conversion successful! Download URL: {download_url}")
 except Exception as e:
     print(f"An error occurred: {e}")
@@ -36,20 +36,20 @@ except Exception as e:
 If you prefer to handle the steps manually or asynchronously:
 
 ```python
-from pdf_craft_sdk import PDFCraftClient
+from pdf_craft_sdk import PDFCraftClient, FormatType
 
 client = PDFCraftClient(api_key="YOUR_API_KEY")
 
 # 1. Submit task
 task_id = client.submit_conversion(
     pdf_url="cache://your-pdf-file.pdf",
-    format_type="markdown"
+    format_type=FormatType.MARKDOWN
 )
 print(f"Task submitted. ID: {task_id}")
 
 # 2. Wait for completion explicitly
 try:
-    download_url = client.wait_for_completion(task_id, format_type="markdown")
+    download_url = client.wait_for_completion(task_id, format_type=FormatType.MARKDOWN)
     print(f"Download URL: {download_url}")
 except Exception as e:
     print(f"Conversion failed or timed out: {e}")

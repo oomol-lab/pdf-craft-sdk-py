@@ -2,6 +2,7 @@ import time
 import requests
 from typing import Optional, Dict, Any, Union
 from .exceptions import APIError, TimeoutError
+from .enums import FormatType
 
 class PDFCraftClient:
     def __init__(self, api_key: str, base_url: str = "https://fusion-api.oomol.com/v1"):
@@ -12,22 +13,28 @@ class PDFCraftClient:
             "Authorization": f"Bearer {self.api_key}"
         }
 
-    def submit_conversion(self, pdf_url: str, format_type: str = "markdown", model: str = "gundam") -> str:
+    def _ensure_format_type(self, format_type: Union[str, FormatType]) -> str:
+        if isinstance(format_type, FormatType):
+            return format_type.value
+        if format_type not in [t.value for t in FormatType]:
+            raise ValueError(f"format_type must be one of {[t.value for t in FormatType]}")
+        return format_type
+
+    def submit_conversion(self, pdf_url: str, format_type: Union[str, FormatType] = FormatType.MARKDOWN, model: str = "gundam") -> str:
         """
         Submit PDF conversion task
         
         Args:
             pdf_url: URL of the PDF file
-            format_type: 'markdown' or 'epub'
+            format_type: 'markdown' or 'epub' or FormatType
             model: Model to use, default is 'gundam'
             
         Returns:
             sessionID (str): The ID of the submitted task
         """
-        if format_type not in ['markdown', 'epub']:
-            raise ValueError("format_type must be 'markdown' or 'epub'")
+        format_type_str = self._ensure_format_type(format_type)
             
-        endpoint = f"{self.base_url}/pdf-transform-{format_type}/submit"
+        endpoint = f"{self.base_url}/pdf-transform-{format_type_str}/submit"
         data = {
             "pdfURL": pdf_url,
             "model": model
@@ -48,18 +55,19 @@ class PDFCraftClient:
         else:
             raise APIError(f"Failed to submit task: {result.get('error', 'Unknown error')}")
 
-    def get_conversion_result(self, task_id: str, format_type: str = "markdown") -> Dict[str, Any]:
+    def get_conversion_result(self, task_id: str, format_type: Union[str, FormatType] = FormatType.MARKDOWN) -> Dict[str, Any]:
         """
         Query conversion result
         
         Args:
             task_id: The sessionID of the task
-            format_type: 'markdown' or 'epub'
+            format_type: 'markdown' or 'epub' or FormatType
             
         Returns:
             dict: The result dictionary
         """
-        endpoint = f"{self.base_url}/pdf-transform-{format_type}/result/{task_id}"
+        format_type_str = self._ensure_format_type(format_type)
+        endpoint = f"{self.base_url}/pdf-transform-{format_type_str}/result/{task_id}"
         response = requests.get(endpoint, headers=self.headers)
         
         try:
@@ -67,13 +75,13 @@ class PDFCraftClient:
         except ValueError:
              raise APIError(f"Invalid JSON response: {response.text}")
 
-    def wait_for_completion(self, task_id: str, format_type: str = "markdown", max_wait: int = 300, check_interval: int = 5) -> str:
+    def wait_for_completion(self, task_id: str, format_type: Union[str, FormatType] = FormatType.MARKDOWN, max_wait: int = 300, check_interval: int = 5) -> str:
         """
         Poll until conversion completes
         
         Args:
             task_id: The sessionID of the task
-            format_type: 'markdown' or 'epub'
+            format_type: 'markdown' or 'epub' or FormatType
             max_wait: Maximum wait time in seconds
             check_interval: Interval between checks in seconds
             
@@ -100,7 +108,7 @@ class PDFCraftClient:
 
         raise TimeoutError("Conversion timeout")
 
-    def convert(self, pdf_url: str, format_type: str = "markdown", model: str = "gundam", wait: bool = True, max_wait: int = 300) -> Union[str, Dict[str, Any]]:
+    def convert(self, pdf_url: str, format_type: Union[str, FormatType] = FormatType.MARKDOWN, model: str = "gundam", wait: bool = True, max_wait: int = 300) -> Union[str, Dict[str, Any]]:
         """
         High-level method to convert PDF.
         
