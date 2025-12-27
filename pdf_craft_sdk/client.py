@@ -20,24 +20,36 @@ class PDFCraftClient:
             raise ValueError(f"format_type must be one of {[t.value for t in FormatType]}")
         return format_type
 
-    def submit_conversion(self, pdf_url: str, format_type: Union[str, FormatType] = FormatType.MARKDOWN, model: str = "gundam") -> str:
+    def submit_conversion(self,
+                          pdf_url: str,
+                          format_type: Union[str, FormatType] = FormatType.MARKDOWN,
+                          model: str = "gundam",
+                          includes_footnotes: bool = False,
+                          ignore_pdf_errors: bool = True,
+                          ignore_ocr_errors: bool = True) -> str:
         """
         Submit PDF conversion task
-        
+
         Args:
             pdf_url: URL of the PDF file
             format_type: 'markdown' or 'epub' or FormatType
             model: Model to use, default is 'gundam'
-            
+            includes_footnotes: Whether to process footnotes, default is False
+            ignore_pdf_errors: Whether to ignore PDF parsing errors, default is True
+            ignore_ocr_errors: Whether to ignore OCR recognition errors, default is True
+
         Returns:
             sessionID (str): The ID of the submitted task
         """
         format_type_str = self._ensure_format_type(format_type)
-            
+
         endpoint = f"{self.base_url}/pdf-transform-{format_type_str}/submit"
         data = {
             "pdfURL": pdf_url,
-            "model": model
+            "model": model,
+            "includesFootnotes": includes_footnotes,
+            "ignorePDFErrors": ignore_pdf_errors,
+            "ignoreOCRErrors": ignore_ocr_errors
         }
 
         response = requests.post(endpoint, json=data, headers=self.headers)
@@ -129,23 +141,40 @@ class PDFCraftClient:
 
         raise TimeoutError("Conversion timeout")
 
-    def convert(self, 
-                pdf_url: str, 
-                format_type: Union[str, FormatType] = FormatType.MARKDOWN, 
-                model: str = "gundam", 
-                wait: bool = True, 
-                max_wait_ms: int = 7200000, 
+    def convert(self,
+                pdf_url: str,
+                format_type: Union[str, FormatType] = FormatType.MARKDOWN,
+                model: str = "gundam",
+                includes_footnotes: bool = False,
+                ignore_pdf_errors: bool = True,
+                ignore_ocr_errors: bool = True,
+                wait: bool = True,
+                max_wait_ms: int = 7200000,
                 check_interval_ms: int = 1000,
                 max_check_interval_ms: int = 5000,
                 backoff_factor: Union[float, PollingStrategy] = PollingStrategy.EXPONENTIAL) -> Union[str, Dict[str, Any]]:
         """
         High-level method to convert PDF.
-        
-        If wait is True (default), submits and waits for completion, returning the download URL.
-        If wait is False, submits and returns the task ID.
+
+        Args:
+            pdf_url: URL of the PDF file
+            format_type: 'markdown' or 'epub' or FormatType
+            model: Model to use, default is 'gundam'
+            includes_footnotes: Whether to process footnotes, default is False
+            ignore_pdf_errors: Whether to ignore PDF parsing errors, default is True
+            ignore_ocr_errors: Whether to ignore OCR recognition errors, default is True
+            wait: Whether to wait for completion, default is True
+            max_wait_ms: Maximum wait time in milliseconds (default 2 hours)
+            check_interval_ms: Initial interval in milliseconds (default 1000)
+            max_check_interval_ms: Maximum interval in milliseconds (default 5000)
+            backoff_factor: Multiplier for increasing interval or PollingStrategy enum (default exponential)
+
+        Returns:
+            If wait is True, returns download URL (str)
+            If wait is False, returns task ID (str)
         """
-        task_id = self.submit_conversion(pdf_url, format_type, model)
-        
+        task_id = self.submit_conversion(pdf_url, format_type, model, includes_footnotes, ignore_pdf_errors, ignore_ocr_errors)
+
         if wait:
             return self.wait_for_completion(task_id, format_type, max_wait_ms, check_interval_ms, max_check_interval_ms, backoff_factor)
         else:
