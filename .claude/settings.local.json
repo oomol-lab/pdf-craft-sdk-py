@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python setup.py sdist bdist_wheel)",
+      "Bash(python3 setup.py sdist bdist_wheel)",
+      "Bash(./venv/bin/python -m pip install --upgrade build setuptools wheel twine)",
+      "Bash(./venv/bin/python -m build)",
+      "Bash(./venv/bin/python -m twine upload dist/*)",
+      "Bash(git push)",
+      "Bash(git add .claude/settings.local.json)",
+      "Bash(git commit --amend --no-edit)"
+    ]
+  }
+}
