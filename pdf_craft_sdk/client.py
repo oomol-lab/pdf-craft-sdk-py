@@ -70,22 +70,27 @@ class PDFCraftClient:
     def get_conversion_result(self, task_id: str, format_type: Union[str, FormatType] = FormatType.MARKDOWN) -> Dict[str, Any]:
         """
         Query conversion result
-        
+
         Args:
             task_id: The sessionID of the task
             format_type: 'markdown' or 'epub' or FormatType
-            
+
         Returns:
             dict: The result dictionary
         """
         format_type_str = self._ensure_format_type(format_type)
         endpoint = f"{self.base_url}/pdf-transform-{format_type_str}/result/{task_id}"
         response = requests.get(endpoint, headers=self.headers)
-        
+
         try:
-            return response.json()
+            result = response.json()
         except ValueError:
              raise APIError(f"Invalid JSON response: {response.text}")
+
+        if not response.ok:
+            raise APIError(f"HTTP {response.status_code}: {response.text}")
+
+        return result
 
     def wait_for_completion(self, 
                             task_id: str, 

@@ -8,7 +8,7 @@ with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name="pdf-craft-sdk",
-    version="0.4.0",
+    version="0.4.1",
     description="A Python SDK for PDF Craft API",
     long_description=long_description,
     long_description_content_type="text/markdown",
