@@ -8,7 +8,9 @@
       "Bash(./venv/bin/python -m twine upload dist/*)",
       "Bash(git push)",
       "Bash(git add .claude/settings.local.json)",
-      "Bash(git commit --amend --no-edit)"
+      "Bash(git commit --amend --no-edit)",
+      "Bash(python:*)",
+      "Bash(python3:*)"
     ]
   }
 }
