@@ -4,8 +4,8 @@
 import os
 from pdf_craft_sdk import PDFCraftClient, BatchFile, FormatType
 
-# 使用提供的 API Key
-API_KEY = "your_api_key_here"
+# 使用环境变量获取 API Key
+API_KEY = os.getenv("PDF_CRAFT_API_KEY", "your_api_key_here")
 
 # 初始化客户端
 client = PDFCraftClient(api_key=API_KEY)

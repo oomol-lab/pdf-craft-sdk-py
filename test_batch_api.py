@@ -1,10 +1,11 @@
 """
 简单的批处理 API 测试脚本
 """
+import os
 import requests
 import json
 
-API_KEY = "your_api_key_here"
+API_KEY = os.getenv("PDF_CRAFT_API_KEY", "your_api_key_here")
 BASE_URL = "https://pdf-server.oomol.com/api/v1/conversion"
 
 headers = {

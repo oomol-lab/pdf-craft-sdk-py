@@ -12,6 +12,12 @@ from .batch_types import (
     ConcurrentStatus,
     OperationResponse
 )
+from .upload_types import (
+    InitUploadResponse,
+    GetUploadUrlResponse,
+    UploadProgress,
+    ProgressCallback
+)
 
 __all__ = [
     "PDFCraftClient",
@@ -29,6 +35,10 @@ __all__ = [
     "GetBatchesResponse",
     "GetJobsResponse",
     "ConcurrentStatus",
-    "OperationResponse"
+    "OperationResponse",
+    "InitUploadResponse",
+    "GetUploadUrlResponse",
+    "UploadProgress",
+    "ProgressCallback"
 ]
 

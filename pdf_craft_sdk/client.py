@@ -1,19 +1,23 @@
 import time
+import os
 import requests
-from typing import Optional, Dict, Any, Union, List
+from typing import Optional, Dict, Any, Union, List, BinaryIO
 from .exceptions import APIError, TimeoutError
 from .enums import FormatType, PollingStrategy, BatchStatus, JobStatus
 from .batch_types import (
     BatchFile, CreateBatchResponse, BatchDetail, JobDetail,
     GetBatchesResponse, GetJobsResponse, ConcurrentStatus, OperationResponse, Pagination
 )
+from .upload_types import InitUploadResponse, GetUploadUrlResponse, UploadProgress, ProgressCallback
 
 class PDFCraftClient:
-    def __init__(self, api_key: str, base_url: str = "https://fusion-api.oomol.com/v1", batch_base_url: Optional[str] = None):
+    def __init__(self, api_key: str, base_url: str = "https://fusion-api.oomol.com/v1", batch_base_url: Optional[str] = None, upload_base_url: Optional[str] = None):
         self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         # 批处理 API 基础 URL，默认使用 https://pdf-server.oomol.com/api/v1/conversion
         self.batch_base_url = (batch_base_url or "https://pdf-server.oomol.com/api/v1/conversion").rstrip('/')
+        # 上传 API 基础 URL，默认使用 https://llm.oomol.com/api/tasks/files/remote-cache
+        self.upload_base_url = (upload_base_url or "https://llm.oomol.com/api/tasks/files/remote-cache").rstrip('/')
         self.headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
@@ -738,3 +742,253 @@ class PDFCraftClient:
             queued_jobs=data_result.get("queuedJobs")
         )
 
+    # ==================== 文件上传 API 方法 ====================
+
+    def _init_upload(self, file_size: int, file_extension: str) -> InitUploadResponse:
+        """
+        初始化分片上传
+
+        Args:
+            file_size: 文件大小（字节）
+            file_extension: 文件扩展名（例如 ".pdf"）
+
+        Returns:
+            InitUploadResponse: 初始化上传响应
+        """
+        endpoint = f"{self.upload_base_url}/init"
+        data = {
+            "file_extension": file_extension,
+            "size": file_size
+        }
+
+        response = requests.post(endpoint, json=data, headers=self.headers)
+
+        try:
+            result = response.json()
+        except ValueError:
+            raise APIError(f"Invalid JSON response: {response.text}")
+
+        if not response.ok:
+            raise APIError(f"HTTP {response.status_code}: {response.text}")
+
+        # 处理包装在 data 字段中的响应
+        data_result = result.get("data", result)
+
+        return InitUploadResponse(
+            upload_id=data_result["upload_id"],
+            part_size=data_result["part_size"],
+            total_parts=data_result["total_parts"],
+            uploaded_parts=data_result.get("uploaded_parts", []),
+            presigned_urls=data_result["presigned_urls"]
+        )
+
+    def _upload_part(self, presigned_url: str, part_data: bytes, max_retries: int = 3) -> None:
+        """
+        上传单个分片
+
+        Args:
+            presigned_url: 预签名 URL
+            part_data: 分片数据
+            max_retries: 最大重试次数（默认 3）
+
+        Raises:
+            APIError: 上传失败
+        """
+        headers = {
+            "Content-Type": "application/octet-stream"
+        }
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.put(presigned_url, data=part_data, headers=headers)
+                if response.ok:
+                    return
+                elif attempt == max_retries - 1:
+                    raise APIError(f"Failed to upload part after {max_retries} attempts: HTTP {response.status_code}")
+            except requests.RequestException as e:
+                if attempt == max_retries - 1:
+                    raise APIError(f"Failed to upload part after {max_retries} attempts: {str(e)}")
+                # 指数退避
+                time.sleep(2 ** attempt)
+
+    def _get_upload_url(self, upload_id: str) -> str:
+        """
+        获取上传文件的最终 URL
+
+        Args:
+            upload_id: 上传任务 ID
+
+        Returns:
+            str: 文件的云端缓存 URL（例如 "cache://xxx.pdf"）
+        """
+        endpoint = f"{self.upload_base_url}/{upload_id}/url"
+        response = requests.get(endpoint, headers=self.headers)
+
+        try:
+            result = response.json()
+        except ValueError:
+            raise APIError(f"Invalid JSON response: {response.text}")
+
+        if not response.ok:
+            raise APIError(f"HTTP {response.status_code}: {response.text}")
+
+        # 处理包装在 data 字段中的响应
+        data_result = result.get("data", result)
+
+        return data_result["url"]
+
+    def upload_file(self,
+                    file_path: str,
+                    progress_callback: ProgressCallback = None,
+                    max_retries: int = 3) -> str:
+        """
+        上传 PDF 文件到云端
+
+        Args:
+            file_path: 本地 PDF 文件路径
+            progress_callback: 进度回调函数，接收 UploadProgress 对象
+            max_retries: 每个分片的最大重试次数（默认 3）
+
+        Returns:
+            str: 文件的云端缓存 URL（例如 "cache://xxx.pdf"），可用于后续的转换任务
+
+        Raises:
+            APIError: 上传失败
+            FileNotFoundError: 文件不存在
+
+        Example:
+            ```python
+            # 无进度回调
+            cache_url = client.upload_file("document.pdf")
+
+            # 带进度回调
+            def on_progress(progress: UploadProgress):
+                print(f"Progress: {progress.percentage:.2f}% ({progress.current_part}/{progress.total_parts})")
+
+            cache_url = client.upload_file("document.pdf", progress_callback=on_progress)
+            print(f"Upload complete: {cache_url}")
+            ```
+        """
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        # 获取文件信息
+        file_size = os.path.getsize(file_path)
+        file_extension = os.path.splitext(file_path)[1]
+        if not file_extension:
+            file_extension = ".pdf"
+
+        # 初始化上传
+        init_response = self._init_upload(file_size, file_extension)
+
+        # 上传分片
+        uploaded_bytes = 0
+        with open(file_path, 'rb') as f:
+            for part_number in range(1, init_response.total_parts + 1):
+                # 跳过已上传的分片
+                if part_number in init_response.uploaded_parts:
+                    uploaded_bytes += init_response.part_size
+                    continue
+
+                # 读取分片数据
+                part_data = f.read(init_response.part_size)
+                if not part_data:
+                    break
+
+                # 上传分片
+                presigned_url = init_response.presigned_urls.get(str(part_number))
+                if not presigned_url:
+                    raise APIError(f"Missing presigned URL for part {part_number}")
+
+                self._upload_part(presigned_url, part_data, max_retries)
+
+                # 更新进度
+                uploaded_bytes += len(part_data)
+                if progress_callback:
+                    progress = UploadProgress(
+                        uploaded_bytes=uploaded_bytes,
+                        total_bytes=file_size,
+                        current_part=part_number,
+                        total_parts=init_response.total_parts
+                    )
+                    progress_callback(progress)
+
+        # 获取最终 URL
+        cache_url = self._get_upload_url(init_response.upload_id)
+        return cache_url
+
+    def convert_local_pdf(self,
+                         file_path: str,
+                         format_type: Union[str, FormatType] = FormatType.MARKDOWN,
+                         model: str = "gundam",
+                         includes_footnotes: bool = False,
+                         ignore_pdf_errors: bool = True,
+                         ignore_ocr_errors: bool = True,
+                         wait: bool = True,
+                         max_wait_ms: int = 7200000,
+                         check_interval_ms: int = 1000,
+                         max_check_interval_ms: int = 5000,
+                         backoff_factor: Union[float, PollingStrategy] = PollingStrategy.EXPONENTIAL,
+                         progress_callback: ProgressCallback = None,
+                         upload_max_retries: int = 3) -> Union[str, Dict[str, Any]]:
+        """
+        上传本地 PDF 文件并进行转换（便捷方法）
+
+        Args:
+            file_path: 本地 PDF 文件路径
+            format_type: 输出格式（'markdown' 或 'epub' 或 FormatType）
+            model: 使用的模型，默认是 'gundam'
+            includes_footnotes: 是否处理脚注，默认 False
+            ignore_pdf_errors: 是否忽略 PDF 解析错误，默认 True
+            ignore_ocr_errors: 是否忽略 OCR 识别错误，默认 True
+            wait: 是否等待转换完成，默认 True
+            max_wait_ms: 最大等待时间（毫秒），默认 2 小时
+            check_interval_ms: 初始轮询间隔（毫秒），默认 1000
+            max_check_interval_ms: 最大轮询间隔（毫秒），默认 5000
+            backoff_factor: 轮询间隔增长因子或 PollingStrategy，默认指数增长
+            progress_callback: 上传进度回调函数
+            upload_max_retries: 上传分片的最大重试次数，默认 3
+
+        Returns:
+            如果 wait 为 True，返回下载 URL (str)
+            如果 wait 为 False，返回任务 ID (str)
+
+        Raises:
+            FileNotFoundError: 文件不存在
+            APIError: 上传或转换失败
+
+        Example:
+            ```python
+            # 快速转换本地 PDF
+            download_url = client.convert_local_pdf("document.pdf")
+
+            # 带上传进度回调
+            def on_upload_progress(progress):
+                print(f"Uploading: {progress.percentage:.2f}%")
+
+            download_url = client.convert_local_pdf(
+                "document.pdf",
+                format_type="markdown",
+                progress_callback=on_upload_progress
+            )
+            print(f"Download URL: {download_url}")
+            ```
+        """
+        # 先上传文件
+        cache_url = self.upload_file(file_path, progress_callback, upload_max_retries)
+
+        # 然后调用转换
+        return self.convert(
+            pdf_url=cache_url,
+            format_type=format_type,
+            model=model,
+            includes_footnotes=includes_footnotes,
+            ignore_pdf_errors=ignore_pdf_errors,
+            ignore_ocr_errors=ignore_ocr_errors,
+            wait=wait,
+            max_wait_ms=max_wait_ms,
+            check_interval_ms=check_interval_ms,
+            max_check_interval_ms=max_check_interval_ms,
+            backoff_factor=backoff_factor
+        )

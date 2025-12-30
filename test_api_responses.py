@@ -1,10 +1,11 @@
 """
 测试其他批处理 API 端点的响应格式
 """
+import os
 import requests
 import json
 
-API_KEY = "your_api_key_here"
+API_KEY = os.getenv("PDF_CRAFT_API_KEY", "your_api_key_here")
 BASE_URL = "https://pdf-server.oomol.com/api/v1/conversion"
 
 headers = {
