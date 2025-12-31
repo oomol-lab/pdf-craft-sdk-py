@@ -10,7 +10,12 @@
       "Bash(git add .claude/settings.local.json)",
       "Bash(git commit --amend --no-edit)",
       "Bash(python:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)",
+      "Bash(export PDFCRAFT_API_KEY=\"api-545235dd983e04aa95adcea536d29b73531ec39de326681026f2ced80b7a84d1\")",
+      "Bash(echo:*)",
+      "Bash(__NEW_LINE__ wc -l examples.py examples_zh.py)"
     ]
   }
 }

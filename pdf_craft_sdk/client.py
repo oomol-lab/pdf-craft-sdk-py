@@ -887,7 +887,7 @@ class PDFCraftClient:
         with open(file_path, 'rb') as f:
             for part_number in range(1, init_response.total_parts + 1):
                 # 跳过已上传的分片
-                if part_number in init_response.uploaded_parts:
+                if init_response.uploaded_parts and part_number in init_response.uploaded_parts:
                     uploaded_bytes += init_response.part_size
                     continue
 
